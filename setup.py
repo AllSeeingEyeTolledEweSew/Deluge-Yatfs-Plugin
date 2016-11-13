@@ -19,7 +19,7 @@ from setuptools import setup, find_packages
 __plugin_name__ = "PieceIO"
 __author__ = "AllSeeingEyeTolledEweSew"
 __author_email__ = "allseeingeyetolledewesew@protonmail.com"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __url__ = "https://github.com/AllSeeingEyeTolledEweSew/Deluge-PieceIO-Plugin"
 __license__ = "GPLv3"
 __description__ = "Provides RPC access to piece-level libtorrent functions."

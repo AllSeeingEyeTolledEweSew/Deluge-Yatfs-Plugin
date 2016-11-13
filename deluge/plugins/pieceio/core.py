@@ -27,6 +27,17 @@ from deluge.plugins.pluginbase import CorePluginBase
 log = logging.getLogger(__name__)
 
 
+def piece_bitstring(pieces):
+    bvals = []
+    for i in range(0, (len(pieces) - 1) / 8 + 1):
+        b = 0
+        for j, p in enumerate(pieces[i * 8:(i + 1) * 8]):
+            if p:
+                b |= 0x80 >> j
+        bvals.append(b)
+    return base64.b64encode("".join(chr(b) for b in bvals))
+
+
 class ReadPieceEvent(DelugeEvent):
 
     def __init__(self, torrent_id, piece, buf):
@@ -35,8 +46,8 @@ class ReadPieceEvent(DelugeEvent):
 
 class CacheFlushedEvent(DelugeEvent):
 
-    def __init__(self, torrent_id):
-        self._args = [torrent_id]
+    def __init__(self, torrent_id, pieces):
+        self._args = [torrent_id, pieces]
 
 
 class Core(CorePluginBase):
@@ -85,15 +96,7 @@ class Core(CorePluginBase):
     def get_piece_bitstring(self, torrent_id):
         torrent = self.torrents[torrent_id]
         status = torrent.handle.status(lt.status_flags_t.query_pieces)
-        pieces = status.pieces
-        bvals = []
-        for i in range(0, (len(pieces) - 1) / 8 + 1):
-            b = 0
-            for j, p in enumerate(pieces[i * 8:(i + 1) * 8]):
-                if p:
-                    b |= 0x80 >> j
-            bvals.append(b)
-        return base64.b64encode("".join(chr(b) for b in bvals))
+        return piece_bitstring(status.pieces)
 
     @export
     def get_piece_priorities(self, torrent_id):
@@ -113,7 +116,11 @@ class Core(CorePluginBase):
 
     def on_cache_flushed(self, alert):
         torrent_id = str(alert.handle.info_hash())
-        self.eventmanager.emit(CacheFlushedEvent(torrent_id))
+        if hasattr(alert, "pieces"):
+            pieces = piece_bitstring(alert.pieces)
+        else:
+            pieces = None
+        self.eventmanager.emit(CacheFlushedEvent(torrent_id, pieces))
 
     @export
     def set_sequential_download(self, torrent_id, sequential_download):
