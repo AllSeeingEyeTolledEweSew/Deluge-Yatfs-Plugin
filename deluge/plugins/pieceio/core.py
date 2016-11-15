@@ -156,3 +156,14 @@ class Core(CorePluginBase):
     def flush_cache(self, torrent_id):
         torrent = self.torrents[torrent_id]
         torrent.handle.flush_cache()
+
+    @export
+    def get_cache_info(self, torrent_id, flags=0):
+        torrent = self.torrents[torrent_id]
+        cache_status = self.session.get_cache_info(torrent.handle, flags)
+        ret = {}
+        for key in dir(cache_status):
+            if key.startswith("_"):
+                continue
+            ret[key] = getattr(cache_status, key)
+        return ret
