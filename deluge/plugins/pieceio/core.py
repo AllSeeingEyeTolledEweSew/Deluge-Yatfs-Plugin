@@ -163,3 +163,18 @@ class Core(CorePluginBase):
                 continue
             ret[key] = getattr(cache_status, key)
         return ret
+
+    @export
+    def session_get_settings(self, keys):
+        ret = {}
+        settings = self.session.settings()
+        for key in keys:
+            ret[key] = getattr(settings, key)
+        return ret
+
+    @export
+    def session_set_settings(self, **kwargs):
+        settings = self.session.settings()
+        for k, v in kwargs.items():
+            setattr(settings, k, v)
+        self.session.set_settings(settings)
