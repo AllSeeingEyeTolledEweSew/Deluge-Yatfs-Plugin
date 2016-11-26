@@ -46,8 +46,8 @@ class ReadPieceEvent(DelugeEvent):
 
 class CacheFlushedEvent(DelugeEvent):
 
-    def __init__(self, torrent_id, pieces):
-        self._args = [torrent_id, pieces]
+    def __init__(self, torrent_id):
+        self._args = [torrent_id]
 
 
 class Core(CorePluginBase):
@@ -116,11 +116,7 @@ class Core(CorePluginBase):
 
     def on_cache_flushed(self, alert):
         torrent_id = str(alert.handle.info_hash())
-        if hasattr(alert, "pieces"):
-            pieces = piece_bitstring(alert.pieces)
-        else:
-            pieces = None
-        self.eventmanager.emit(CacheFlushedEvent(torrent_id, pieces))
+        self.eventmanager.emit(CacheFlushedEvent(torrent_id))
 
     @export
     def set_sequential_download(self, torrent_id, sequential_download):
