@@ -178,3 +178,13 @@ class Core(CorePluginBase):
         for k, v in kwargs.items():
             setattr(settings, k, v)
         self.session.set_settings(settings)
+
+    @export
+    def keep_redundant_connections(self, torrent_id):
+        torrent = self.torrents[torrent_id]
+        return torrent.handle.keep_redundant_connections()
+
+    @export
+    def set_keep_redundant_connections(self, torrent_id, keep):
+        torrent = self.torrents[torrent_id]
+        torrent.handle.set_keep_redundant_connections(keep)
