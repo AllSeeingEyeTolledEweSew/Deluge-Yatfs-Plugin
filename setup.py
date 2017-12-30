@@ -9,20 +9,20 @@
 # Copyright (C) 2009 Damien Churchill <damoxc@gmail.com>
 # Copyright (C) 2010 Pedro Algarvio <pedro@algarvio.me>
 #
-# This file is part of PieceIO and is licensed under GNU General Public License 3.0, or later, with
+# This file is part of YATFS and is licensed under GNU General Public License 3.0, or later, with
 # the additional special exception to link portions of this program with the OpenSSL library.
 # See LICENSE for more details.
 #
 
 from setuptools import setup, find_packages
 
-__plugin_name__ = "PieceIO"
+__plugin_name__ = "yatfs_plugin"
 __author__ = "AllSeeingEyeTolledEweSew"
 __author_email__ = "allseeingeyetolledewesew@protonmail.com"
-__version__ = "1.1.7"
-__url__ = "https://github.com/AllSeeingEyeTolledEweSew/Deluge-PieceIO-Plugin"
+__version__ = "1.0.0"
+__url__ = "https://github.com/AllSeeingEyeTolledEweSew/Deluge-Yatfs-Plugin"
 __license__ = "GPLv3"
-__description__ = "Provides RPC access to piece-level libtorrent functions."
+__description__ = "RPC helper plugin for YATFS."
 
 setup(
     name=__plugin_name__,
@@ -38,5 +38,5 @@ setup(
     entry_points="""
     [deluge.plugin.core]
     %(plugin_name)s = %(plugin_module)s:CorePlugin
-    """ % dict(plugin_name=__plugin_name__, plugin_module=__plugin_name__.lower())
+    """ % dict(plugin_name="yatfs", plugin_module=__plugin__name.lower())
 )

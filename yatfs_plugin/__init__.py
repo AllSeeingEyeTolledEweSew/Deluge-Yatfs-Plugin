@@ -9,7 +9,7 @@
 # Copyright (C) 2009 Damien Churchill <damoxc@gmail.com>
 # Copyright (C) 2010 Pedro Algarvio <pedro@algarvio.me>
 #
-# This file is part of PieceIO and is licensed under GNU General Public License 3.0, or later, with
+# This file is part of YATFS and is licensed under GNU General Public License 3.0, or later, with
 # the additional special exception to link portions of this program with the OpenSSL library.
 # See LICENSE for more details.
 #
