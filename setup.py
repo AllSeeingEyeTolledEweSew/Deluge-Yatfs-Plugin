@@ -38,5 +38,5 @@ setup(
     entry_points="""
     [deluge.plugin.core]
     %(plugin_name)s = %(plugin_module)s:CorePlugin
-    """ % dict(plugin_name="yatfs", plugin_module=__plugin__name.lower())
+    """ % dict(plugin_name="yatfs", plugin_module=__plugin_name__.lower())
 )
