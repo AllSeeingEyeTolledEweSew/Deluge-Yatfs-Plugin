@@ -16,7 +16,7 @@
 
 from setuptools import setup, find_packages
 
-__plugin_name__ = "yatfs_plugin"
+__plugin_name__ = "YatfsRpc"
 __author__ = "AllSeeingEyeTolledEweSew"
 __author_email__ = "allseeingeyetolledewesew@protonmail.com"
 __version__ = "1.0.0"
@@ -38,5 +38,5 @@ setup(
     entry_points="""
     [deluge.plugin.core]
     %(plugin_name)s = %(plugin_module)s:CorePlugin
-    """ % dict(plugin_name="yatfs", plugin_module=__plugin_name__.lower())
+    """ % dict(plugin_name="yatfs", plugin_module="yatfs_plugin")
 )

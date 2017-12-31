@@ -66,16 +66,16 @@ class Core(CorePluginBase):
             "TorrentRemovedEvent", self.on_torrent_remove)
 
         self.pluginmanager.register_status_field(
-            "yatfs_piece_bitfield", self.get_piece_bitfield)
+            "yatfsrpc.piece_bitfield", self.get_piece_bitfield)
         self.pluginmanager.register_status_field(
-            "yatfs_sequential_download", self.get_sequential_download)
+            "yatfsrpc.sequential_download", self.get_sequential_download)
         self.pluginmanager.register_status_field(
-            "yatfs_piece_priority_map", self.get_piece_priority_map)
+            "yatfsrpc.piece_priority_map", self.get_piece_priority_map)
         self.pluginmanager.register_status_field(
-            "yatfs_keep_redundant_connections_map",
+            "yatfsrpc.keep_redundant_connections_map",
             self.get_keep_redundant_connections_map)
         self.pluginmanager.register_status_field(
-            "yatfs_piece_priorities", self.get_piece_priorities)
+            "yatfsrpc.piece_priorities", self.get_piece_priorities)
 
     def disable(self):
         self.alertmanager.deregister_handler(self.on_read_piece)
@@ -85,12 +85,14 @@ class Core(CorePluginBase):
         self.eventmanager.deregister_event_handler(
             "TorrentRemovedEvent", self.on_torrent_remove)
 
-        self.pluginmanager.deregister_status_field("yatfs_piece_bitfield")
-        self.pluginmanager.deregister_status_field("yatfs_sequential_download")
-        self.pluginmanager.deregister_status_field("yatfs_piece_priority_map")
+        self.pluginmanager.deregister_status_field("yatfsrpc.piece_bitfield")
         self.pluginmanager.deregister_status_field(
-            "yatfs_keep_redundant_connections_map")
-        self.pluginmanager.deregister_status_field("yatfs_piece_priorities")
+            "yatfsrpc.sequential_download")
+        self.pluginmanager.deregister_status_field(
+            "yatfsrpc.piece_priority_map")
+        self.pluginmanager.deregister_status_field(
+            "yatfsrpc.keep_redundant_connections_map")
+        self.pluginmanager.deregister_status_field("yatfsrpc.piece_priorities")
 
     def update(self):
         pass
@@ -211,7 +213,7 @@ class Core(CorePluginBase):
         return torrent.handle.piece_priorities()
 
     def on_read_piece(self, alert):
-        log.debug("yatfs.on_read_piece")
+        log.debug("yatfsrpc.on_read_piece")
         try:
             torrent_id = str(alert.handle.info_hash())
             piece = alert.piece
@@ -221,5 +223,5 @@ class Core(CorePluginBase):
             self.eventmanager.emit(
                 YatfsReadPieceEvent(torrent_id, piece, data, error))
         except:
-            log.exception("yatfs.on_read_piece")
+            log.exception("yatfsrpc.on_read_piece")
             raise
