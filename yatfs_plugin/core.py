@@ -49,6 +49,7 @@ class Core(CorePluginBase):
     def enable(self):
         self.torrent_to_piece_priority_maps = {}
         self.torrent_to_keep_redundant_connections_map = {}
+        self.torrent_to_piece_to_data = {}
 
         self.core = component.get("Core")
         self.session = self.core.session
@@ -141,9 +142,12 @@ class Core(CorePluginBase):
         else:
             self.apply_keep_redundant_connections(torrent_id)
 
+        self.torrent_to_piece_to_data[torrent_id] = {}
+
     def on_torrent_remove(self, torrent_id):
         self.torrent_to_piece_priority_maps.pop(torrent_id, {})
         self.torrent_to_keep_redundant_connections_map.pop(torrent_id, {})
+        self.torrent_to_piece_to_data.pop(torrent_id, None)
 
     @export
     def update_piece_priority_map(self, torrent_id, update=None, delete=None):
@@ -206,11 +210,26 @@ class Core(CorePluginBase):
 
     @export
     def read_piece(self, torrent_id, piece):
+        if piece in self.torrent_to_piece_to_data[torrent_id]:
+            return
+        self.torrent_to_piece_to_data[torrent_id][piece] = None
         return self.torrents[torrent_id].handle.read_piece(piece)
 
     def get_piece_priorities(self, torrent_id):
         torrent = self.torrents[torrent_id]
         return torrent.handle.piece_priorities()
+
+    def emit_read_piece_events(self, torrent_id):
+        piece_to_data = self.torrent_to_piece_to_data[torrent_id]
+        pieces = sorted(piece_to_data.keys())
+        for piece in pieces:
+            what = piece_to_data[piece]
+            if what is None:
+                break
+            data, error = what
+            self.eventmanager.emit(
+                YatfsReadPieceEvent(torrent_id, piece, data, error))
+            del piece_to_data[piece]
 
     def on_read_piece(self, alert):
         log.debug("yatfsrpc.on_read_piece")
@@ -220,8 +239,8 @@ class Core(CorePluginBase):
             data = alert.buffer
             e = alert.ec
             error = {"message": e.message(), "value": e.value()}
-            self.eventmanager.emit(
-                YatfsReadPieceEvent(torrent_id, piece, data, error))
+            self.torrent_to_piece_to_data[torrent_id][piece] = (data, error)
+            self.emit_read_piece_events(torrent_id)
         except:
             log.exception("yatfsrpc.on_read_piece")
             raise
