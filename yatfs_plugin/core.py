@@ -1,8 +1,12 @@
 import base64
+import copy
+import json
 import logging
+import threading
 
 from deluge import component
 from deluge._libtorrent import lt
+import deluge.configmanager
 from deluge.core.rpcserver import export
 from deluge.event import DelugeEvent
 from deluge.plugins.pluginbase import CorePluginBase
@@ -28,13 +32,52 @@ class YatfsReadPieceEvent(DelugeEvent):
         self._args = [torrent_id, piece, data, error]
 
 
+
+class StateWriter(threading.Thread):
+
+    def __init__(self, path, **kwargs):
+        super(StateWriter, self).__init__(**kwargs)
+
+        self.cv = threading.Condition()
+        self.done = False
+        self.data = None
+        self.path = path
+
+    def set_data(self, data):
+        with self.cv:
+            self.data = data
+            self.cv.notifyAll()
+
+    def set_done(self):
+        with self.cv:
+            self.done = True
+            self.cv.notifyAll()
+
+    def step(self):
+        with self.cv:
+            while self.data is None and not self.done:
+                self.cv.wait()
+            if self.done:
+                return True
+            data = self.data
+            self.data = None
+
+        try:
+            with open(self.path, mode="rw") as f:
+                json.dump(data, f)
+        except:
+            log.exception("While writing state")
+
+    def run(self):
+        while True:
+            done = self.step()
+            if done:
+                break
+
+
 class Core(CorePluginBase):
 
     def enable(self):
-        self.torrent_to_piece_priority_maps = {}
-        self.torrent_to_keep_redundant_connections_map = {}
-        self.torrent_to_piece_to_data = {}
-
         self.core = component.get("Core")
         self.session = self.core.session
         self.torrents = self.core.torrentmanager.torrents
@@ -62,6 +105,25 @@ class Core(CorePluginBase):
         self.pluginmanager.register_status_field(
             "yatfsrpc.piece_priorities", self.get_piece_priorities)
 
+        state_path = os.path.join(
+            deluge.configmanager.get_config_dir(), "yatfs.json")
+        self.state_writer = StateWriter(
+            state_path, name="yatfsrpc-state-writer")
+        self.state_writer.daemon = True
+        self.state_writer.start()
+
+        if not hasattr(self, "torrent_to_piece_priority_maps"):
+            try:
+                with open(state_path, mode="r") as f:
+                    self.torrent_to_piece_priority_maps = json.load(f)
+            except:
+                log.exception("While reading %s", state_path)
+                self.torrent_to_piece_priority_maps = {}
+
+        self.torrent_to_keep_redundant_connections_map = {}
+        self.torrent_to_piece_to_data = {}
+
+
     def disable(self):
         self.alertmanager.deregister_handler(self.on_read_piece)
 
@@ -79,8 +141,14 @@ class Core(CorePluginBase):
             "yatfsrpc.keep_redundant_connections_map")
         self.pluginmanager.deregister_status_field("yatfsrpc.piece_priorities")
 
+        self.state_writer.set_done()
+
     def update(self):
         pass
+
+    def save_state(self):
+        self.state_writer.set_data(
+            copy.deepcopy(self.torrent_to_piece_priority_maps))
 
     def apply_piece_priorities(self, torrent_id):
         torrent = self.torrents.get(torrent_id)
@@ -116,15 +184,13 @@ class Core(CorePluginBase):
         torrent.handle.set_keep_redundant_connections(keep)
 
     def on_torrent_add(self, torrent_id):
-        if torrent_id not in self.torrent_to_piece_priority_maps:
-            self.torrent_to_piece_priority_maps[torrent_id] = {}
-        else:
-            self.apply_piece_priorities(torrent_id)
-
         if torrent_id not in self.torrent_to_keep_redundant_connections_map:
             self.torrent_to_keep_redundant_connections_map[torrent_id] = {}
         else:
             self.apply_keep_redundant_connections(torrent_id)
+
+        if torrent_id in self.torrent_to_piece_priority_maps:
+            self.apply_piece_priorities(torrent_id)
 
         self.torrent_to_piece_to_data[torrent_id] = {}
 
@@ -132,6 +198,7 @@ class Core(CorePluginBase):
         self.torrent_to_piece_priority_maps.pop(torrent_id, {})
         self.torrent_to_keep_redundant_connections_map.pop(torrent_id, {})
         self.torrent_to_piece_to_data.pop(torrent_id, None)
+        self.save_state()
 
     @export
     def update_piece_priority_map(self, torrent_id, update=None, delete=None):
@@ -142,6 +209,7 @@ class Core(CorePluginBase):
             m.update(update)
         for k in (delete or []):
             m.pop(k, None)
+        self.save_state()
         self.apply_piece_priorities(torrent_id)
 
     @export
