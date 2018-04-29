@@ -1,7 +1,7 @@
 import base64
 import copy
-import json
 import logging
+import os
 import threading
 
 from deluge import component
@@ -10,6 +10,10 @@ import deluge.configmanager
 from deluge.core.rpcserver import export
 from deluge.event import DelugeEvent
 from deluge.plugins.pluginbase import CorePluginBase
+try:
+    import rencode
+except ImportError:
+    import deluge.rencode as rencode
 
 
 log = logging.getLogger(__name__)
@@ -30,6 +34,13 @@ class YatfsReadPieceEvent(DelugeEvent):
 
     def __init__(self, torrent_id, piece, data, error):
         self._args = [torrent_id, piece, data, error]
+
+
+
+class CacheFlushedAlert(DelugeEvent):
+
+    def __init__(self, torrent_id):
+        self._args = [torrent_id]
 
 
 
@@ -63,8 +74,8 @@ class StateWriter(threading.Thread):
             self.data = None
 
         try:
-            with open(self.path, mode="rw") as f:
-                json.dump(data, f)
+            with open(self.path, mode="wb") as f:
+                f.write(rencode.dumps(data))
         except:
             log.exception("While writing state")
 
@@ -87,6 +98,8 @@ class Core(CorePluginBase):
 
         self.alertmanager.register_handler(
             "read_piece_alert", self.on_read_piece)
+        self.alertmanager.register_handler(
+            "cache_flushed_alert", self.on_cache_flushed)
 
         self.eventmanager.register_event_handler(
             "TorrentAddedEvent", self.on_torrent_add)
@@ -104,9 +117,11 @@ class Core(CorePluginBase):
             self.get_keep_redundant_connections_map)
         self.pluginmanager.register_status_field(
             "yatfsrpc.piece_priorities", self.get_piece_priorities)
+        self.pluginmanager.register_status_field(
+            "yatfsrpc.cache_info", self.get_cache_info)
 
         state_path = os.path.join(
-            deluge.configmanager.get_config_dir(), "yatfs.json")
+            deluge.configmanager.get_config_dir(), "yatfs.rencode")
         self.state_writer = StateWriter(
             state_path, name="yatfsrpc-state-writer")
         self.state_writer.daemon = True
@@ -114,8 +129,9 @@ class Core(CorePluginBase):
 
         if not hasattr(self, "torrent_to_piece_priority_maps"):
             try:
-                with open(state_path, mode="r") as f:
-                    self.torrent_to_piece_priority_maps = json.load(f)
+                with open(state_path, mode="rb") as f:
+                    self.torrent_to_piece_priority_maps = rencode.loads(
+                        f.read())
             except:
                 log.exception("While reading %s", state_path)
                 self.torrent_to_piece_priority_maps = {}
@@ -126,6 +142,7 @@ class Core(CorePluginBase):
 
     def disable(self):
         self.alertmanager.deregister_handler(self.on_read_piece)
+        self.alertmanager.deregister_handler(self.on_cache_flushed)
 
         self.eventmanager.deregister_event_handler(
             "TorrentAddedEvent", self.on_torrent_add)
@@ -140,6 +157,7 @@ class Core(CorePluginBase):
         self.pluginmanager.deregister_status_field(
             "yatfsrpc.keep_redundant_connections_map")
         self.pluginmanager.deregister_status_field("yatfsrpc.piece_priorities")
+        self.pluginmanager.deregister_status_field("yatfsrpc.cache_info")
 
         self.state_writer.set_done()
 
@@ -157,22 +175,32 @@ class Core(CorePluginBase):
         num_pieces = torrent.get_status(("num_pieces",)).get("num_pieces", 0)
         if not num_pieces:
             return
-        priority_maps = list(
-            self.torrent_to_piece_priority_maps.get(torrent_id, {}).values())
+        priority_maps = self.torrent_to_piece_priority_maps.get(torrent_id, {})
+        have = torrent.handle.status(lt.status_flags_t.query_pieces).pieces
         priority_map = {}
         for i in range(num_pieces):
             p = -1
-            for m in priority_maps:
+            for k, m in list(priority_maps.items()):
                 v = -1
                 if type(m) is dict:
-                    v = m.get(i)
-                    if type(v) is not int:
-                        v = -1
+                    if have[i]:
+                        m.pop(i, None)
+                    else:
+                        v = m.get(i)
+                        if type(v) is not int:
+                            m.pop(i, None)
+                            v = -1
+                    if not m:
+                        priority_maps.pop(k, None)
                 elif type(m) is int:
                     v = m
+                else:
+                    priority_maps.pop(k, None)
                 p = max(p, v)
             if p >= 0:
                 priority_map[i] = p
+        if all(have) or not priority_maps:
+            self.torrent_to_piece_priority_maps.pop(torrent_id, None)
         torrent.handle.prioritize_pieces(list(priority_map.items()))
 
     def apply_keep_redundant_connections(self, torrent_id):
@@ -209,8 +237,8 @@ class Core(CorePluginBase):
             m.update(update)
         for k in (delete or []):
             m.pop(k, None)
-        self.save_state()
         self.apply_piece_priorities(torrent_id)
+        self.save_state()
 
     @export
     def update_keep_redundant_connections_map(self, torrent_id, update=None,
@@ -240,6 +268,16 @@ class Core(CorePluginBase):
         torrent = self.torrents[torrent_id]
         return torrent.status.sequential_download
 
+    def get_cache_info(self, torrent_id, flags=0):
+        torrent = self.torrents[torrent_id]
+        cache_status = self.session.get_cache_info(torrent.handle, flags)
+        ret = {}
+        for key in dir(cache_status):
+            if key.startswith("_"):
+                continue
+            ret[key] = getattr(cache_status, key)
+        return ret
+
     @export
     def set_sequential_download(self, torrent_id, sequential_download):
         torrent = self.torrents[torrent_id]
@@ -266,6 +304,10 @@ class Core(CorePluginBase):
             return
         self.torrent_to_piece_to_data[torrent_id][piece] = None
         return self.torrents[torrent_id].handle.read_piece(piece)
+
+    @export
+    def flush_cache(self, torrent_id):
+        return self.torrents[torrent_id].handle.flush_cache()
 
     def get_piece_priorities(self, torrent_id):
         torrent = self.torrents[torrent_id]
@@ -296,3 +338,7 @@ class Core(CorePluginBase):
         except:
             log.exception("yatfsrpc.on_read_piece")
             raise
+
+    def on_cache_flushed(self, alert):
+        torrent_id = str(alert.handle.info_hash())
+        self.eventmanager.emit(CacheFlushedEvent(torrent_id))
