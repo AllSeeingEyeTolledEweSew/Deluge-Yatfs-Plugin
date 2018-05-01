@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="YatfsRpc",
-    version="1.1.0",
+    version="1.1.1",
     description="RPC helper plugin for YATFS.",
     author="AllSeeingEyeTolledEweSew",
     author_email="allseeingeyetolledewesew@protonmail.com",

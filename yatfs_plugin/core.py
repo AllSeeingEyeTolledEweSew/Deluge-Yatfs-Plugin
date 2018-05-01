@@ -37,7 +37,7 @@ class YatfsReadPieceEvent(DelugeEvent):
 
 
 
-class CacheFlushedAlert(DelugeEvent):
+class CacheFlushedEvent(DelugeEvent):
 
     def __init__(self, torrent_id):
         self._args = [torrent_id]
